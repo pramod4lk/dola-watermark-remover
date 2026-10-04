@@ -22,7 +22,7 @@
 1. **Auto-Download (Default)**:
    - Ensure the **Auto-Download Videos** toggle is **ON** in the extension popup.
    - Go to [dola.com](https://dola.com) or [doubao.com](https://doubao.com) and generate any video.
-   - The second the video finishes generating, the extension intercepts the master 1080p stream and saves the video **without watermarks** into your `Downloads/Dola_Videos/` folder.
+   - The second the video finishes generating, the extension intercepts the master 1080p stream and saves the video **without watermarks** into your `Downloads/Dola/` folder.
 
 2. **1-Click Screen Grab**:
    - Open the popup and click **Download Video on Screen** to immediately grab any completed video on your active tab.

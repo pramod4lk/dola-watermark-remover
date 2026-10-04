@@ -17,7 +17,7 @@ When generating videos on Dola AI (`dola.com`) or Doubao (`doubao.com`), the pla
 - **100% Watermark-Free Raw 1080p**: Automatically overrides stream parameters (`logo_type=unwatermarked`) and decrypts the master CDN stream token (`qAAB` decryption) to fetch original uncompressed videos.
 - **Automatic Background Downloading**: Detects when a video finishes rendering and automatically saves it to your downloads directory without requiring manual clicks.
 - **1-Click Screen Grabber**: On-demand download button in the extension popup to instantly capture and save any active video visible on your current tab.
-- **Custom Subfolder Organization**: Specify a custom folder name (e.g., `Dola_Videos`) to keep your downloads neatly organized.
+- **Custom Subfolder Organization**: Specify a custom folder name (default: `Dola`) to keep your downloads neatly organized.
 - **Download History & Quick Locate**: Keep track of recent downloads with one-click access to open the file location directly on your computer.
 - **Privacy-Focused & Lightweight**: No external dependencies, no accounts required, no telemetry, and zero bloat. Pure native JavaScript.
 
@@ -93,7 +93,7 @@ When generating videos on Dola AI (`dola.com`) or Doubao (`doubao.com`), the pla
 1. **Automatic Download Mode (Default)**:
    - Navigate to [dola.com](https://dola.com) or [doubao.com](https://doubao.com).
    - Generate a video using any prompt.
-   - Once generation is finished, the extension will automatically intercept the master stream and download the watermark-free video directly into your `Downloads/Dola_Videos/` folder.
+   - Once generation is finished, the extension will automatically intercept the master stream and download the watermark-free video directly into your `Downloads/Dola/` folder.
    - A subtle notification toast will appear on the bottom-right of your screen confirming the download.
 
 2. **Manual Screen Grab**:

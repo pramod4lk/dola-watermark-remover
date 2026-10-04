@@ -196,7 +196,7 @@
     autoDownloadToggle.checked = autoDownloadOn;
     notificationsToggle.checked = config.notifications !== false;
 
-    savedFolder = config.subfolder || 'Dola_Videos';
+    savedFolder = config.subfolder || 'Dola';
     if (document.activeElement !== subfolderInput) {
       subfolderInput.value = savedFolder;
       saveFolderBtn.hidden = true;
@@ -232,7 +232,7 @@
 
   // Folder
   async function saveFolder() {
-    const folder = subfolderInput.value.trim() || 'Dola_Videos';
+    const folder = subfolderInput.value.trim() || 'Dola';
     const res = await send({ type: 'UPDATE_CONFIG', config: { subfolder: folder } });
     if (!res.ok) {
       setHint('Could not save folder.', 'error', 2500);

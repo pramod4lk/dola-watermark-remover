@@ -121,7 +121,8 @@ dola_watermark_remove/
 ├── icon16.png         # 16x16 icon
 ├── icon32.png         # 32x32 icon
 ├── icon48.png         # 48x48 icon
-└── icon128.png        # 128x128 icon
+├── icon128.png        # 128x128 icon
+└── assets/           # Icon SVG sources (icon.svg for 48/128, icon-small.svg for 16/32)
 ```
 
 ---

@@ -114,9 +114,10 @@ input:focus-visible {
 }
 
 .brand-logo {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  /* icon128.png carries Chrome's 16px padding; oversize + negative margin keeps a ~34px badge */
+  width: 44px;
+  height: 44px;
+  margin: -5px;
   flex-shrink: 0;
 }
 

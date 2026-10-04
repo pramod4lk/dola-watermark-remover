@@ -1,20 +1,61 @@
 /**
  * Dola AI Video Watermark Remover — Popup Controller
- * Clean, lightweight, and typography-driven UI.
  */
 (() => {
   'use strict';
 
-  // Elements
-  const autoDownloadToggle = document.getElementById('dola-auto-download-toggle');
-  const btnDownloadScreen = document.getElementById('btn-download-screen');
-  const btnDownloadScreenText = document.getElementById('btn-download-screen-text');
-  const metricCount = document.getElementById('dola-metric-count');
-  const subfolderInput = document.getElementById('dola-subfolder-input');
-  const saveFolderBtn = document.getElementById('btn-dola-save-folder');
-  const historyList = document.getElementById('dola-history-list');
-  const historyCount = document.getElementById('dola-history-count');
-  const clearHistoryBtn = document.getElementById('btn-dola-clear-history');
+  const $ = id => document.getElementById(id);
+
+  const autoDownloadToggle = $('dola-auto-download-toggle');
+  const notificationsToggle = $('dola-notifications-toggle');
+  const btnDownloadScreen = $('btn-download-screen');
+  const btnDownloadScreenText = $('btn-download-screen-text');
+  const heroHint = $('hero-hint');
+  const pageStatus = $('page-status');
+  const pageStatusText = $('page-status-text');
+  const statTotal = $('stat-total');
+  const statToday = $('stat-today');
+  const statLast = $('stat-last');
+  const subfolderInput = $('dola-subfolder-input');
+  const saveFolderBtn = $('btn-dola-save-folder');
+  const historyList = $('dola-history-list');
+  const historyCount = $('dola-history-count');
+  const clearHistoryBtn = $('btn-dola-clear-history');
+  const openDolaBtn = $('btn-open-dola');
+
+  const DEFAULT_HINT = 'Saves the latest generated video on this tab in original quality.';
+  const SUPPORTED_HOST = /(^|\.)(dola\.com|doubao\.com|seaart\.ai)$/;
+
+  const ICONS = {
+    complete: '<svg class="item-state" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Saved"><circle cx="12" cy="12" r="9.5"/><path d="m8 12.5 2.7 2.7L16 9.8"/></svg>',
+    in_progress: '<svg class="item-state" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-label="Downloading"><path d="M12 2.5a9.5 9.5 0 1 0 9.5 9.5"/></svg>',
+    interrupted: '<svg class="item-state" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Failed"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/></svg>',
+    folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
+    retry: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>',
+    remove: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+    empty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="m17 10 5-3v10l-5-3"/></svg>'
+  };
+
+  let savedFolder = '';
+  let autoDownloadOn = true;
+  let tabSupported = false;
+  let hintTimer = null;
+
+  function send(message) {
+    return new Promise(resolve => {
+      try {
+        chrome.runtime.sendMessage(message, res => {
+          if (chrome.runtime.lastError) {
+            resolve({ ok: false, error: chrome.runtime.lastError.message });
+          } else {
+            resolve(res || { ok: false });
+          }
+        });
+      } catch (err) {
+        resolve({ ok: false, error: err.message || String(err) });
+      }
+    });
+  }
 
   function escapeHtml(str) {
     return String(str || '').replace(/[&<>"']/g, c => ({
@@ -23,142 +64,278 @@
   }
 
   function formatTime(timestamp) {
-    if (!timestamp) return '';
+    if (!timestamp) return '—';
     const diffSec = Math.floor((Date.now() - timestamp) / 1000);
     if (diffSec < 60) return 'Just now';
     const diffMin = Math.floor(diffSec / 60);
     if (diffMin < 60) return `${diffMin}m ago`;
     const diffHours = Math.floor(diffMin / 60);
     if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
     return new Date(timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  function renderHistory(items = []) {
-    if (!historyList) return;
-    if (historyCount) historyCount.textContent = String(items.length);
+  function formatBytes(bytes) {
+    if (!bytes) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    return `${value.toFixed(value < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
+  }
 
-    if (!items || items.length === 0) {
-      historyList.innerHTML = `
-        <div class="empty-state">
-          No videos downloaded yet.<br>
-          Generate any video on Dola AI or Doubao to download unwatermarked videos automatically.
+  function formatDuration(seconds) {
+    if (!seconds) return '';
+    const s = Math.round(seconds);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function setHint(text, tone = '', resetMs = 0) {
+    clearTimeout(hintTimer);
+    heroHint.textContent = text;
+    heroHint.dataset.tone = tone;
+    if (resetMs) {
+      hintTimer = setTimeout(() => setHint(defaultHint()), resetMs);
+    }
+  }
+
+  function defaultHint() {
+    return tabSupported ? DEFAULT_HINT : 'Open a Dola AI or Doubao tab to grab videos.';
+  }
+
+  function updatePageStatus() {
+    if (!tabSupported) {
+      pageStatus.dataset.state = 'idle';
+      pageStatusText.textContent = 'Not on Dola';
+    } else if (!autoDownloadOn) {
+      pageStatus.dataset.state = 'paused';
+      pageStatusText.textContent = 'Auto paused';
+    } else {
+      pageStatus.dataset.state = 'connected';
+      pageStatusText.textContent = 'Watching';
+    }
+  }
+
+  function renderStats(history, total) {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    statTotal.textContent = String(total);
+    statToday.textContent = String(history.filter(item => item.timestamp >= startOfDay.getTime()).length);
+    statLast.textContent = history[0] ? formatTime(history[0].timestamp) : '—';
+  }
+
+  function renderHistoryItem(item) {
+    const state = item.state === 'interrupted' || item.state === 'in_progress' ? item.state : 'complete';
+    const title = item.prompt || item.filename || 'Untitled video';
+    const meta = [];
+
+    if (state === 'interrupted') {
+      meta.push('<span class="tag-error">Download failed</span>');
+    } else if (state === 'in_progress') {
+      meta.push('<span class="tag">Downloading…</span>');
+    } else {
+      meta.push(`<span class="tag">${escapeHtml(item.resolution || '1080p')}</span>`);
+      if (item.bytes) meta.push(`<span>${formatBytes(item.bytes)}</span>`);
+      if (item.duration) meta.push(`<span>${formatDuration(item.duration)}</span>`);
+    }
+    meta.push(`<span>${formatTime(item.timestamp)}</span>`);
+
+    const actions = state === 'interrupted'
+      ? `<button class="icon-btn retry" data-action="retry" title="Retry download" aria-label="Retry download" type="button">${ICONS.retry}</button>`
+      : `<button class="icon-btn" data-action="show" title="Show in folder" aria-label="Show in folder" type="button">${ICONS.folder}</button>`;
+
+    return `
+      <li class="history-item" data-state="${state}" data-id="${escapeHtml(item.id)}" data-download-id="${Number(item.downloadId) || ''}">
+        ${ICONS[state]}
+        <div class="history-details">
+          <div class="history-prompt" title="${escapeHtml(item.filename || title)}">${escapeHtml(title)}</div>
+          <div class="history-meta">${meta.join('<span class="sep">·</span>')}</div>
         </div>
+        <div class="item-actions">
+          ${actions}
+          <button class="icon-btn" data-action="remove" title="Remove from list" aria-label="Remove from list" type="button">${ICONS.remove}</button>
+        </div>
+      </li>
+    `;
+  }
+
+  function renderHistory(items) {
+    historyCount.textContent = String(items.length);
+    clearHistoryBtn.hidden = items.length === 0;
+
+    if (!items.length) {
+      historyList.innerHTML = `
+        <li class="empty-state">
+          ${ICONS.empty}
+          <strong>No downloads yet</strong>
+          <span>Generate a video on Dola AI and it will be saved here automatically, without the watermark.</span>
+        </li>
       `;
       return;
     }
 
-    historyList.innerHTML = items.slice(0, 30).map(item => `
-      <div class="history-item">
-        <div class="history-details">
-          <div class="history-prompt" title="${escapeHtml(item.prompt || item.filename)}">
-            ${escapeHtml(item.prompt || item.filename)}
-          </div>
-          <div class="history-meta">
-            <span class="history-tag">${escapeHtml(item.resolution || '1080p Raw')}</span>
-            <span>•</span>
-            <span>${formatTime(item.timestamp)}</span>
-          </div>
-        </div>
-        <button class="btn-icon-open" data-download-id="${item.downloadId || ''}" title="Show in folder" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-        </button>
-      </div>
-    `).join('');
-
-    historyList.querySelectorAll('.btn-icon-open').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const dId = btn.getAttribute('data-download-id');
-        chrome.runtime.sendMessage({
-          type: 'SHOW_DOWNLOAD_ITEM',
-          downloadId: dId ? Number(dId) : null
-        });
-      });
-    });
+    historyList.innerHTML = items.slice(0, 50).map(renderHistoryItem).join('');
   }
 
-  function refreshDownloaderState() {
-    chrome.runtime.sendMessage({ type: 'GET_DOWNLOADER_STATUS' }, res => {
-      if (chrome.runtime.lastError || !res || !res.ok) return;
+  async function refresh() {
+    const res = await send({ type: 'GET_DOWNLOADER_STATUS' });
+    if (!res.ok) return;
 
-      if (metricCount) {
-        metricCount.textContent = String(res.totalDownloaded || (res.history ? res.history.length : 0));
-      }
-      if (autoDownloadToggle && res.config) {
-        autoDownloadToggle.checked = Boolean(res.config.autoDownload);
-      }
-      if (subfolderInput && res.config && res.config.subfolder) {
-        subfolderInput.value = res.config.subfolder;
-      }
-      renderHistory(res.history || []);
-    });
+    const config = res.config || {};
+    const history = Array.isArray(res.history) ? res.history : [];
+
+    autoDownloadOn = config.autoDownload !== false;
+    autoDownloadToggle.checked = autoDownloadOn;
+    notificationsToggle.checked = config.notifications !== false;
+
+    savedFolder = config.subfolder || 'Dola_Videos';
+    if (document.activeElement !== subfolderInput) {
+      subfolderInput.value = savedFolder;
+      saveFolderBtn.hidden = true;
+    }
+
+    renderStats(history, res.totalDownloaded || 0);
+    renderHistory(history);
+    updatePageStatus();
   }
 
-  // Toggle Auto-Download
-  if (autoDownloadToggle) {
-    autoDownloadToggle.addEventListener('change', () => {
-      chrome.runtime.sendMessage({
-        type: 'TOGGLE_AUTO_DOWNLOAD',
-        enabled: autoDownloadToggle.checked
-      }, () => {
-        if (chrome.runtime.lastError) return;
-        refreshDownloaderState();
-      });
-    });
+  async function detectActiveTab() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const host = tab?.url ? new URL(tab.url).hostname : '';
+      tabSupported = SUPPORTED_HOST.test(host);
+    } catch {
+      tabSupported = false;
+    }
+    updatePageStatus();
+    setHint(defaultHint());
   }
 
-  // Save Folder Name
-  if (saveFolderBtn && subfolderInput) {
-    saveFolderBtn.addEventListener('click', () => {
-      const folder = subfolderInput.value.trim() || 'Dola_Videos';
-      chrome.runtime.sendMessage({
-        type: 'UPDATE_CONFIG',
-        config: { subfolder: folder }
-      }, () => {
-        if (chrome.runtime.lastError) return;
-        saveFolderBtn.textContent = 'Saved';
-        setTimeout(() => { saveFolderBtn.textContent = 'Save'; }, 1500);
-      });
-    });
+  // Toggles
+  autoDownloadToggle.addEventListener('change', async () => {
+    autoDownloadOn = autoDownloadToggle.checked;
+    updatePageStatus();
+    await send({ type: 'TOGGLE_AUTO_DOWNLOAD', enabled: autoDownloadOn });
+  });
+
+  notificationsToggle.addEventListener('change', () => {
+    send({ type: 'UPDATE_CONFIG', config: { notifications: notificationsToggle.checked } });
+  });
+
+  // Folder
+  async function saveFolder() {
+    const folder = subfolderInput.value.trim() || 'Dola_Videos';
+    const res = await send({ type: 'UPDATE_CONFIG', config: { subfolder: folder } });
+    if (!res.ok) {
+      setHint('Could not save folder.', 'error', 2500);
+      return;
+    }
+    savedFolder = res.config.subfolder;
+    subfolderInput.value = savedFolder;
+    saveFolderBtn.hidden = true;
+    subfolderInput.blur();
+    setHint(`Videos will be saved to Downloads/${savedFolder}/`, 'success', 2500);
   }
 
-  // Clear History
-  if (clearHistoryBtn) {
-    clearHistoryBtn.addEventListener('click', () => {
-      if (confirm('Clear video download history?')) {
-        chrome.runtime.sendMessage({ type: 'CLEAR_HISTORY' }, () => {
-          if (chrome.runtime.lastError) return;
-          refreshDownloaderState();
-        });
-      }
-    });
+  subfolderInput.addEventListener('input', () => {
+    saveFolderBtn.hidden = subfolderInput.value.trim() === savedFolder;
+  });
+
+  subfolderInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter') saveFolder();
+    if (event.key === 'Escape') {
+      subfolderInput.value = savedFolder;
+      saveFolderBtn.hidden = true;
+      subfolderInput.blur();
+    }
+  });
+
+  saveFolderBtn.addEventListener('mousedown', event => event.preventDefault());
+  saveFolderBtn.addEventListener('click', saveFolder);
+
+  // Clear history (two-step, no blocking confirm dialog)
+  let clearConfirmTimer = null;
+  clearHistoryBtn.addEventListener('click', async () => {
+    if (clearHistoryBtn.dataset.confirm !== 'true') {
+      clearHistoryBtn.dataset.confirm = 'true';
+      clearHistoryBtn.textContent = 'Click again to clear';
+      clearConfirmTimer = setTimeout(resetClearButton, 3000);
+      return;
+    }
+    resetClearButton();
+    await send({ type: 'CLEAR_HISTORY' });
+    refresh();
+  });
+
+  function resetClearButton() {
+    clearTimeout(clearConfirmTimer);
+    clearHistoryBtn.dataset.confirm = 'false';
+    clearHistoryBtn.textContent = 'Clear all';
   }
 
-  // Grab Screen Video
-  if (btnDownloadScreen) {
-    btnDownloadScreen.addEventListener('click', () => {
-      const originalText = btnDownloadScreenText.textContent;
-      btnDownloadScreen.disabled = true;
-      btnDownloadScreenText.textContent = 'Scanning for 1080p Stream...';
+  // History item actions
+  historyList.addEventListener('click', async event => {
+    const btn = event.target.closest('[data-action]');
+    if (!btn) return;
+    const row = btn.closest('.history-item');
+    const id = row?.dataset.id;
 
-      chrome.runtime.sendMessage({ type: 'TRIGGER_PAGE_SCAN_AND_DOWNLOAD' }, res => {
-        btnDownloadScreen.disabled = false;
-        if (chrome.runtime.lastError) {
-          btnDownloadScreenText.textContent = 'Connection error';
-        } else if (res?.ok && res.downloadedCount > 0) {
-          btnDownloadScreenText.textContent = 'Video Downloaded (No Watermark)!';
-        } else {
-          btnDownloadScreenText.textContent = res?.message || 'No video detected';
-        }
-        setTimeout(() => {
-          btnDownloadScreenText.textContent = originalText;
-        }, 2500);
-        refreshDownloaderState();
-      });
-    });
+    if (btn.dataset.action === 'show') {
+      send({ type: 'SHOW_DOWNLOAD_ITEM', downloadId: Number(row.dataset.downloadId) || null });
+    } else if (btn.dataset.action === 'remove') {
+      await send({ type: 'REMOVE_HISTORY_ITEM', id });
+      refresh();
+    } else if (btn.dataset.action === 'retry') {
+      btn.disabled = true;
+      const res = await send({ type: 'RETRY_DOWNLOAD', id });
+      if (!res.ok) setHint(res.error || 'Retry failed. The link may have expired.', 'error', 3500);
+      refresh();
+    }
+  });
+
+  // Grab video on screen
+  function setButtonState(state, text) {
+    btnDownloadScreen.dataset.state = state;
+    btnDownloadScreen.disabled = state === 'busy';
+    btnDownloadScreenText.textContent = text;
   }
 
-  // Initial load
-  refreshDownloaderState();
+  btnDownloadScreen.addEventListener('click', async () => {
+    setButtonState('busy', 'Finding video…');
+    setHint('Looking for the original stream on this tab…');
+
+    const res = await send({ type: 'TRIGGER_PAGE_SCAN_AND_DOWNLOAD' });
+
+    if (res.ok && res.downloadedCount > 0) {
+      setButtonState('success', 'Saved without watermark');
+      setHint(res.filename ? `Downloads/${res.filename}` : 'Saved to your Downloads folder.', 'success', 4000);
+    } else {
+      setButtonState('error', 'No video found');
+      setHint(res.message || res.error || 'No video detected on this tab.', 'error', 4000);
+    }
+
+    setTimeout(() => setButtonState('idle', 'Download video on screen'), 2600);
+    refresh();
+  });
+
+  openDolaBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: 'https://www.dola.com/' });
+    window.close();
+  });
+
+  // Live updates while the popup is open (new downloads, state changes)
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (changes.dola_download_history || changes.dola_downloader_config)) {
+      refresh();
+    }
+  });
+
+  $('app-version').textContent = `v${chrome.runtime.getManifest().version}`;
+
+  detectActiveTab();
+  refresh();
 })();

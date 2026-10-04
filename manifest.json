@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dola AI Video Watermark Remover & Downloader",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automatically download 100% Watermark-Free 1080P Raw MP4 videos from Dola AI and Doubao.",
   "icons": {
     "16": "icon16.png",
@@ -21,11 +21,7 @@
     "*://*.doubao.com/*",
     "*://*.seaart.ai/*",
     "*://*.byteintl.com/*",
-    "*://*.ibytedtos.com/*",
-    "https://dola.com/*",
-    "https://www.dola.com/*",
-    "https://doubao.com/*",
-    "https://www.doubao.com/*"
+    "*://*.ibytedtos.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -33,12 +29,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.doubao.com/*",
-        "https://*.doubao.com/*",
-        "https://dola.com/*",
-        "https://www.dola.com/*",
-        "https://*.dola.com/*",
         "*://*.dola.com/*",
+        "*://*.doubao.com/*",
         "*://*.seaart.ai/*"
       ],
       "js": [
@@ -49,12 +41,8 @@
     },
     {
       "matches": [
-        "https://www.doubao.com/*",
-        "https://*.doubao.com/*",
-        "https://dola.com/*",
-        "https://www.dola.com/*",
-        "https://*.dola.com/*",
         "*://*.dola.com/*",
+        "*://*.doubao.com/*",
         "*://*.seaart.ai/*"
       ],
       "js": [
@@ -72,25 +60,5 @@
       "48": "icon48.png",
       "128": "icon128.png"
     }
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "extractor.js",
-        "icon16.png",
-        "icon32.png",
-        "icon48.png",
-        "icon128.png"
-      ],
-      "matches": [
-        "https://www.doubao.com/*",
-        "https://*.doubao.com/*",
-        "https://dola.com/*",
-        "https://www.dola.com/*",
-        "https://*.dola.com/*",
-        "*://*.dola.com/*",
-        "*://*.seaart.ai/*"
-      ]
-    }
-  ]
+  }
 }

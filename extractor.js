@@ -12,8 +12,6 @@
   console.log('[Dola Extractor] Stream interceptor initialized in MAIN world.');
 
   const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-  const NativeReadableStream = pageWindow.ReadableStream || ReadableStream;
-  const NativeResponse = pageWindow.Response || Response;
 
   let extractedVideos = [];
   const videoUrlIndex = new Set();
@@ -62,10 +60,21 @@
     console.log('[Dola Extractor] 🎯 New Unwatermarked Video Captured:', normalized);
 
     try {
-      window.dispatchEvent(new CustomEvent('DOLA_VIDEO_EXTRACTED', { detail: normalized }));
+      window.dispatchEvent(new CustomEvent('DOLA_VIDEO_EXTRACTED', { detail: JSON.stringify(normalized) }));
     } catch (e) {
       console.warn('[Dola Extractor] Failed to dispatch DOLA_VIDEO_EXTRACTED:', e);
     }
+  }
+
+  function toUrlString(input) {
+    if (!input) return '';
+    if (typeof input === 'string') return input;
+    if (input instanceof URL) return input.href;
+    return typeof input.url === 'string' ? input.url : String(input);
+  }
+
+  function isWatchedUrl(url) {
+    return url.includes('/im/chain/single') || url.includes('/chat/completion') || url.includes('/samantha/');
   }
 
   // Hook XHR
@@ -73,87 +82,73 @@
   const originalXHRSend = pageWindow.XMLHttpRequest.prototype.send;
 
   pageWindow.XMLHttpRequest.prototype.open = function (method, url, ...args) {
-    this._url = url;
+    this.__dolaUrl = toUrlString(url);
     return originalXHROpen.apply(this, [method, url, ...args]);
   };
 
   pageWindow.XMLHttpRequest.prototype.send = function (...args) {
-    const url = this._url;
-    this.addEventListener('load', function () {
-      if (url && (url.includes('/im/chain/single') || url.includes('/chat/completion') || url.includes('/samantha/'))) {
+    const url = this.__dolaUrl || '';
+    if (isWatchedUrl(url)) {
+      this.addEventListener('load', function () {
         try {
-          const data = JSON.parse(this.responseText);
-          processDoubaoFallbackVideos(data, this.responseText);
+          if (this.responseType && this.responseType !== 'text' && this.responseType !== 'json') return;
+          const text = this.responseType === 'json' ? JSON.stringify(this.response) : this.responseText;
+          processDoubaoFallbackVideos(JSON.parse(text), text);
         } catch (e) {}
-      }
-    });
+      });
+    }
     return originalXHRSend.apply(this, args);
   };
 
-  // Hook Fetch
+  // Hook Fetch — read a cloned body so the page's own response stays untouched.
   const originalFetch = pageWindow.fetch;
-  pageWindow.fetch = async function (...args) {
-    const url = args[0];
-    const requestUrl = typeof url === 'string' ? url : (url?.url || '');
+  pageWindow.fetch = function (...args) {
+    const requestUrl = toUrlString(args[0]);
+    const responsePromise = originalFetch.apply(this, args);
 
-    if (requestUrl && requestUrl.includes('/im/chain/single')) {
-      const response = await originalFetch.apply(this, args);
-      response.clone().text().then(text => {
-        try {
-          const data = JSON.parse(text);
-          processDoubaoFallbackVideos(data, text);
-        } catch (e) {}
+    if (requestUrl.includes('/im/chain/single')) {
+      responsePromise.then(response => {
+        response.clone().text().then(text => {
+          try {
+            processDoubaoFallbackVideos(JSON.parse(text), text);
+          } catch (e) {}
+        }).catch(() => {});
       }).catch(() => {});
-      return response;
-    }
-
-    if (requestUrl && requestUrl.includes('/chat/completion')) {
-      const response = await originalFetch.apply(this, args);
-      if (!response.body || typeof response.body.getReader !== 'function') {
-        return response;
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      const stream = new NativeReadableStream({
-        async start(controller) {
-          let buffer = '';
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const jsonStr = line.substring(6).trim();
-                  if (jsonStr.includes('fallback_api') || jsonStr.includes('creation_block') || jsonStr.includes('creations')) {
-                    const data = JSON.parse(jsonStr);
-                    processDoubaoFallbackVideos(data, jsonStr);
-                  }
-                } catch (e) {}
-              }
-            }
-
-            controller.enqueue(value);
-          }
-          controller.close();
+    } else if (requestUrl.includes('/chat/completion')) {
+      responsePromise.then(response => {
+        const body = response.clone().body;
+        if (body && typeof body.getReader === 'function') {
+          readSseStream(body.getReader()).catch(() => {});
         }
-      });
-
-      return new NativeResponse(stream, {
-        headers: response.headers,
-        status: response.status,
-        statusText: response.statusText
-      });
+      }).catch(() => {});
     }
 
-    return originalFetch.apply(this, args);
+    return responsePromise;
   };
+
+  async function readSseStream(reader) {
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const handleLine = line => {
+      if (!line.startsWith('data:')) return;
+      const jsonStr = line.substring(5).trim();
+      if (!jsonStr.includes('fallback_api') && !jsonStr.includes('creation_block') && !jsonStr.includes('creations')) return;
+      try {
+        processDoubaoFallbackVideos(JSON.parse(jsonStr), jsonStr);
+      } catch (e) {}
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      lines.forEach(handleLine);
+    }
+    buffer += decoder.decode();
+    if (buffer) handleLine(buffer);
+  }
 
   function processDoubaoFallbackVideos(json, rawBody = '', posterUrl = '') {
     const fallbackApis = findDoubaoFallbackApis(json, rawBody);
@@ -279,7 +274,10 @@
       headers: {
         accept: 'application/json,text/plain,*/*',
       },
-    }).then(res => res.json());
+    }).then(res => {
+      if (!res.ok) throw new Error(`Fallback API returned ${res.status}`);
+      return res.json();
+    });
   }
 
   function getVideoData(payload) {
@@ -521,16 +519,16 @@
   // Scan initial page HTML script tags for pre-rendered fallback APIs
   function scanPageScriptTags() {
     try {
-      const scriptElement = document.querySelector(
+      const scriptElements = document.querySelectorAll(
         'script[data-script-src="modern-run-router-data-fn"], script[data-script-src="modern-run-window-fn"][data-fn-name="mergeLoaderData"]'
       );
-      if (scriptElement) {
+      for (const scriptElement of scriptElements) {
         const dataFnArgs = scriptElement.getAttribute('data-fn-args');
-        if (dataFnArgs) {
+        if (!dataFnArgs) continue;
+        try {
           const jsonStr = dataFnArgs.replace(/&quot;/g, '"');
-          const jsonData = JSON.parse(jsonStr);
-          processDoubaoFallbackVideos(jsonData, jsonStr);
-        }
+          processDoubaoFallbackVideos(JSON.parse(jsonStr), jsonStr);
+        } catch (e) {}
       }
     } catch (e) {}
   }
@@ -538,7 +536,7 @@
   // Handle requests from content script
   window.addEventListener('DOLA_GET_CHAT_MEDIA', () => {
     window.dispatchEvent(new CustomEvent('DOLA_CHAT_MEDIA_RESPONSE', {
-      detail: { videos: extractedVideos }
+      detail: JSON.stringify({ videos: extractedVideos })
     }));
   });
 

@@ -116,7 +116,7 @@ dola_watermark_remove/
 ├── content.js         # Content script bridge (isolated world)
 ├── extractor.js       # Main-world network interceptor & stream decryptor
 ├── popup.html         # Extension popup user interface
-├── popup.css          # Minimalist typography & dark theme styling
+├── popup.css          # Clean typography styling with automatic light/dark theme
 ├── popup.js           # Popup controller & settings manager
 ├── icon16.png         # 16x16 icon
 ├── icon32.png         # 32x32 icon

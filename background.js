@@ -3,7 +3,8 @@
  * Manages auto-downloads, deduplication, folder storage, history, and notifications.
  */
 
-const DOLA_DEFAULT_FOLDER = 'Dola_Videos';
+const DOLA_DEFAULT_FOLDER = 'Dola';
+const DOLA_LEGACY_DEFAULT_FOLDER = 'Dola_Videos';
 const DOLA_HISTORY_LIMIT = 100;
 const DOLA_TAB_PATTERNS = [
   '*://*.dola.com/*',
@@ -31,6 +32,11 @@ async function dolaLoadState() {
     const res = await chrome.storage.local.get(['dola_downloader_config', 'dola_download_history']);
     if (res.dola_downloader_config) {
       dolaConfig = { ...dolaConfig, ...res.dola_downloader_config };
+      // Move installs still on the old untouched default to the new one.
+      if (dolaConfig.subfolder === DOLA_LEGACY_DEFAULT_FOLDER) {
+        dolaConfig.subfolder = DOLA_DEFAULT_FOLDER;
+        await chrome.storage.local.set({ dola_downloader_config: dolaConfig });
+      }
     }
     if (Array.isArray(res.dola_download_history)) {
       dolaDownloadHistory = res.dola_download_history;

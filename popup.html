@@ -107,6 +107,11 @@
             <div class="history-header">
                 <h2 class="history-title">Recent downloads <span id="dola-history-count" class="count">0</span></h2>
                 <button id="btn-dola-clear-history" class="btn-link danger" type="button" hidden>Clear all</button>
+                <div id="clear-confirm" class="clear-confirm" role="group" aria-label="Confirm clearing history" hidden>
+                    <span class="clear-confirm-text">Clear all?</span>
+                    <button id="btn-clear-cancel" class="btn-link muted" type="button">Cancel</button>
+                    <button id="btn-clear-confirm" class="btn-link danger-strong" type="button">Clear</button>
+                </div>
             </div>
             <ul class="history-list" id="dola-history-list"></ul>
         </section>

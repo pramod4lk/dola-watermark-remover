@@ -21,6 +21,9 @@
   const historyList = $('dola-history-list');
   const historyCount = $('dola-history-count');
   const clearHistoryBtn = $('btn-dola-clear-history');
+  const clearConfirm = $('clear-confirm');
+  const clearConfirmBtn = $('btn-clear-confirm');
+  const clearCancelBtn = $('btn-clear-cancel');
   const openDolaBtn = $('btn-open-dola');
 
   const DEFAULT_HINT = 'Saves the latest generated video on this tab in original quality.';
@@ -165,7 +168,8 @@
 
   function renderHistory(items) {
     historyCount.textContent = String(items.length);
-    clearHistoryBtn.hidden = items.length === 0;
+    clearHistoryBtn.hidden = items.length === 0 || !clearConfirm.hidden;
+    if (!items.length) clearConfirm.hidden = true;
 
     if (!items.length) {
       historyList.innerHTML = `
@@ -257,25 +261,30 @@
   saveFolderBtn.addEventListener('mousedown', event => event.preventDefault());
   saveFolderBtn.addEventListener('click', saveFolder);
 
-  // Clear history (two-step, no blocking confirm dialog)
-  let clearConfirmTimer = null;
-  clearHistoryBtn.addEventListener('click', async () => {
-    if (clearHistoryBtn.dataset.confirm !== 'true') {
-      clearHistoryBtn.dataset.confirm = 'true';
-      clearHistoryBtn.textContent = 'Click again to clear';
-      clearConfirmTimer = setTimeout(resetClearButton, 3000);
+  // Clear history — inline confirm (window.confirm() is unreliable in extension popups)
+  function showClearConfirm(show) {
+    clearConfirm.hidden = !show;
+    clearHistoryBtn.hidden = show || historyList.querySelector('.history-item') === null;
+    if (show) clearConfirmBtn.focus();
+  }
+
+  clearHistoryBtn.addEventListener('click', () => showClearConfirm(true));
+  clearCancelBtn.addEventListener('click', () => showClearConfirm(false));
+
+  clearConfirmBtn.addEventListener('click', async () => {
+    clearConfirmBtn.disabled = true;
+    const res = await send({ type: 'CLEAR_HISTORY' });
+    clearConfirmBtn.disabled = false;
+    if (!res.ok) {
+      showClearConfirm(false);
+      setHint(res.error || 'Could not clear history.', 'error', 3000);
       return;
     }
-    resetClearButton();
-    await send({ type: 'CLEAR_HISTORY' });
-    refresh();
+    renderStats([], 0);
+    renderHistory([]);
+    showClearConfirm(false);
+    setHint('Download history cleared.', 'success', 2500);
   });
-
-  function resetClearButton() {
-    clearTimeout(clearConfirmTimer);
-    clearHistoryBtn.dataset.confirm = 'false';
-    clearHistoryBtn.textContent = 'Clear all';
-  }
 
   // History item actions
   historyList.addEventListener('click', async event => {
